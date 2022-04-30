@@ -1,5 +1,5 @@
 # the-solar-system-website
-the solar system is aproject created by me using HTML and CSS.
+the solar system is a project created by me using HTML and CSS.
 ## 🚀 About Me
 I'm a front end devloper 
 
