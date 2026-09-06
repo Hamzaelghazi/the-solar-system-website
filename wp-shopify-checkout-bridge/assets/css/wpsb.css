@@ -1,0 +1,117 @@
+/* WP Shopify Checkout Bridge — front-end + admin styles.
+ * Single-accent design system; override --wpsb-accent to match your brand. */
+
+:root {
+    --wpsb-accent: #635bff;
+    --wpsb-accent-ink: #ffffff;
+    --wpsb-ink: #1a1a2e;
+    --wpsb-muted: #6b7280;
+    --wpsb-line: #e5e7eb;
+    --wpsb-radius: 12px;
+}
+
+/* ---- Product card ---- */
+.wpsb-card {
+    display: flex;
+    gap: 20px;
+    border: 1px solid var(--wpsb-line);
+    border-radius: var(--wpsb-radius);
+    padding: 20px;
+    background: #fff;
+    max-width: 640px;
+}
+.wpsb-card__media { flex: 0 0 40%; }
+.wpsb-card__media img { border-radius: 10px; display: block; width: 100%; height: auto; }
+.wpsb-card__body { flex: 1; }
+.wpsb-card__title { margin: 0 0 6px; font-size: 1.25rem; color: var(--wpsb-ink); }
+.wpsb-card__price { font-size: 1.4rem; font-weight: 700; color: var(--wpsb-ink); margin-bottom: 10px; }
+.wpsb-card__desc { color: var(--wpsb-muted); line-height: 1.5; margin: 0 0 16px; }
+
+/* ---- Buttons ---- */
+.wpsb-btn, .wpsb-buy {
+    display: inline-block;
+    background: var(--wpsb-accent);
+    color: var(--wpsb-accent-ink);
+    border: 0;
+    border-radius: 10px;
+    padding: 12px 22px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform .05s ease, filter .15s ease;
+}
+.wpsb-btn:hover, .wpsb-buy:hover { filter: brightness(1.05); }
+.wpsb-btn:active, .wpsb-buy:active { transform: translateY(1px); }
+.wpsb-btn--secondary { background: #fff; color: var(--wpsb-ink); border: 1px solid var(--wpsb-line); }
+.wpsb-btn--disabled, .wpsb-buy:disabled { background: var(--wpsb-line); color: var(--wpsb-muted); cursor: not-allowed; }
+.wpsb-fallback { display: block; margin-top: 10px; font-size: .85rem; color: var(--wpsb-muted); }
+.wpsb-trust { margin-top: 12px; font-size: .8rem; color: var(--wpsb-muted); }
+.wpsb-notice { padding: 12px 14px; border: 1px dashed var(--wpsb-line); border-radius: 8px; color: var(--wpsb-muted); }
+
+/* ---- Spinner overlay ---- */
+.wpsb-spinner {
+    position: fixed;
+    inset: 0;
+    background: rgba(255, 255, 255, .82);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+}
+.wpsb-spinner.is-visible { display: flex; }
+.wpsb-spinner__box { text-align: center; }
+.wpsb-spinner__ring {
+    width: 44px; height: 44px;
+    margin: 0 auto 14px;
+    border: 4px solid var(--wpsb-line);
+    border-top-color: var(--wpsb-accent);
+    border-radius: 50%;
+    animation: wpsb-spin .8s linear infinite;
+}
+.wpsb-spinner__text { color: var(--wpsb-ink); font-weight: 600; }
+@keyframes wpsb-spin { to { transform: rotate(360deg); } }
+
+/* ---- Admin ---- */
+.wpsb-admin .wpsb-status-card {
+    border: 1px solid var(--wpsb-line);
+    border-radius: var(--wpsb-radius);
+    padding: 18px 20px;
+    background: #fff;
+    max-width: 720px;
+    margin: 16px 0;
+}
+.wpsb-admin .wpsb-status-card.is-ok { border-color: #16a34a; background: #f0fdf4; }
+.wpsb-badge { background: #16a34a; color: #fff; font-size: .75rem; padding: 2px 8px; border-radius: 999px; margin-left: 8px; }
+.wpsb-status-grid { display: flex; gap: 28px; margin-top: 10px; }
+.wpsb-status-grid > div { display: flex; flex-direction: column; }
+.wpsb-status-grid strong { font-size: 1.8rem; color: var(--wpsb-ink); }
+.wpsb-status-grid span { color: var(--wpsb-muted); font-size: .85rem; }
+
+.wpsb-actions { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
+.wpsb-action { max-width: 300px; }
+.wpsb-action .description { margin-top: 6px; }
+
+.wpsb-kpis { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
+.wpsb-kpi { border: 1px solid var(--wpsb-line); border-radius: var(--wpsb-radius); padding: 16px 20px; background: #fff; min-width: 150px; }
+.wpsb-kpi__value { font-size: 1.6rem; font-weight: 700; color: var(--wpsb-ink); }
+.wpsb-kpi__label { color: var(--wpsb-muted); font-size: .85rem; }
+
+.wpsb-bars { display: flex; align-items: flex-end; gap: 6px; height: 140px; padding: 10px; border: 1px solid var(--wpsb-line); border-radius: var(--wpsb-radius); background: #fff; max-width: 720px; }
+.wpsb-bar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+.wpsb-bar span { width: 100%; background: var(--wpsb-accent); border-radius: 4px 4px 0 0; min-height: 2px; }
+.wpsb-bar small { margin-top: 4px; font-size: .65rem; color: var(--wpsb-muted); }
+
+.wpsb-health { list-style: none; margin: 0; padding: 0; max-width: 720px; }
+.wpsb-health__item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--wpsb-line); }
+.wpsb-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; background: var(--wpsb-muted); }
+.wpsb-health__item.is-ok .wpsb-dot { background: #16a34a; }
+.wpsb-health__item.is-warning .wpsb-dot { background: #f59e0b; }
+.wpsb-health__item.is-error .wpsb-dot { background: #dc2626; }
+
+.wpsb-ask-out { white-space: pre-wrap; margin-top: 12px; padding: 12px 14px; border: 1px solid var(--wpsb-line); border-radius: 10px; background: #fff; max-width: 720px; min-height: 24px; }
+
+@media (max-width: 640px) {
+    .wpsb-card { flex-direction: column; }
+    .wpsb-status-grid { flex-direction: column; gap: 12px; }
+}
