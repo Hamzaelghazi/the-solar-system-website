@@ -136,7 +136,7 @@ class WPSB_Products {
             </div>
 
             <div class="wpsb-actions">
-                <?php $this->action_form('wpsb_link_now', __('Link to Shopify by name or SKU', 'wpsb'), __('Matches unlinked WooCommerce products to their Shopify twin by handle/name, falling back to SKU. Storefront token only.', 'wpsb')); ?>
+                <?php $this->action_form('wpsb_link_now', __('Link to Shopify by SKU', 'wpsb'), __('Matches each unlinked WooCommerce product to the Shopify variant with the same SKU. The SKU is the only match key — set the WooCommerce SKU to equal the Shopify variant SKU.', 'wpsb')); ?>
                 <?php $this->action_form('wpsb_sync_now', __('Sync prices now', 'wpsb'), __('Refresh price, sale price and stock for every linked product from live Shopify data.', 'wpsb')); ?>
                 <?php $this->action_form('wpsb_import_all', __('Import Shopify → WooCommerce', 'wpsb'), __('Create WooCommerce products from your Shopify catalogue so your theme renders them natively.', 'wpsb')); ?>
             </div>
@@ -196,75 +196,66 @@ class WPSB_Products {
     /* ------------------------------------------------------------------ */
 
     /**
-     * Link unlinked WooCommerce products to Shopify by name/handle, then SKU.
-     * Clears the per-run "already tried" markers at the start so a product that
-     * was tried before it existed in Shopify is retried (v1.11.4).
+     * Link unlinked WooCommerce products to Shopify strictly by SKU. The SKU is
+     * the single match key: a WooCommerce product links to the Shopify variant
+     * carrying the same SKU, and to nothing otherwise (no name/handle guessing).
+     * Prefers the Admin API SKU search (reliable, sees unpublished variants) and
+     * falls back to the Storefront SKU search when there is no Admin token.
      */
     public function handle_link_now() {
         $this->guard('wpsb_link_now');
         $api = WPSB_Shopify_API::instance();
-        $woo = WPSB_Woo::instance();
 
         $ids = $this->unlinked_ids(50);
-        $linked = 0;
-        $unmatched = [];
+        $linked  = 0;
+        $no_sku  = [];   // WooCommerce products with no SKU set
+        $no_match = [];  // SKU set, but no Shopify variant carries it
 
         foreach ($ids as $pid) {
             $wc = wc_get_product($pid);
             if (!$wc) {
                 continue;
             }
-            // Try by handle first — check the stored handle, the product's real
-            // slug, AND the slugified name, since any of them might equal the
-            // Shopify handle (they often differ from the display title).
-            $candidates = array_unique(array_filter([
-                get_post_meta($pid, '_wpsb_handle', true),
-                get_post_field('post_name', $pid),
-                sanitize_title($wc->get_name()),
-            ]));
-            $product = null;
-            $variant = '';
-            foreach ($candidates as $candidate) {
-                $product = $api->get_product_by_handle($candidate);
-                if ($product) {
-                    $variant = $product['default_variant'];
-                    break;
-                }
+            $sku = trim((string) $wc->get_sku());
+            if ($sku === '') {
+                $no_sku[] = $wc->get_name();
+                continue;
             }
 
-            // Fall back to SKU. Prefer the Admin API (reliable SKU search) when
-            // an Admin token is present, else the Storefront search.
-            if (!$product && $wc->get_sku()) {
-                $bySku = $api->has_admin()
-                    ? $api->admin_variant_by_sku($wc->get_sku())
-                    : null;
-                if (!$bySku) {
-                    $bySku = $api->get_variant_by_sku($wc->get_sku());
-                }
-                if ($bySku && !empty($bySku['matched_variant'])) {
-                    $product = $bySku;
-                    $variant = $bySku['matched_variant']['id'];
-                }
+            $bySku = $api->has_admin() ? $api->admin_variant_by_sku($sku) : null;
+            if (!$bySku) {
+                $bySku = $api->get_variant_by_sku($sku);
+            }
+            if (!$bySku || empty($bySku['matched_variant'])) {
+                $no_match[] = sprintf('%s (%s)', $wc->get_name(), $sku);
+                continue;
             }
 
-            if ($product && $variant) {
-                update_post_meta($pid, '_wpsb_variant_id', $variant);
-                update_post_meta($pid, '_wpsb_handle', $product['handle']);
-                if (!empty($product['id'])) {
-                    update_post_meta($pid, '_wpsb_shopify_id', $product['id']);
-                }
-                $linked++;
-            } else {
-                $unmatched[] = $wc->get_name();
+            update_post_meta($pid, '_wpsb_variant_id', $bySku['matched_variant']['id']);
+            update_post_meta($pid, '_wpsb_sku', $sku);
+            if (!empty($bySku['handle'])) {
+                update_post_meta($pid, '_wpsb_handle', $bySku['handle']);
             }
+            if (!empty($bySku['id'])) {
+                update_post_meta($pid, '_wpsb_shopify_id', $bySku['id']);
+            }
+            $linked++;
         }
 
-        $this->redirect_with(sprintf(
-            /* translators: 1: linked count, 2: unmatched count */
-            __('Linked %1$d product(s). %2$d could not be matched.', 'wpsb'),
-            $linked,
-            count($unmatched)
-        ) . ($unmatched ? ' ' . __('Unmatched:', 'wpsb') . ' ' . esc_html(implode(', ', array_slice($unmatched, 0, 10))) : ''));
+        $msg = sprintf(__('Linked %d product(s) by SKU.', 'wpsb'), $linked);
+        if ($no_match) {
+            $msg .= ' ' . sprintf(
+                __('No Shopify variant found for: %s.', 'wpsb'),
+                esc_html(implode(', ', array_slice($no_match, 0, 10)))
+            );
+        }
+        if ($no_sku) {
+            $msg .= ' ' . sprintf(
+                __('No SKU set on: %s.', 'wpsb'),
+                esc_html(implode(', ', array_slice($no_sku, 0, 10)))
+            );
+        }
+        $this->redirect_with($msg);
     }
 
     public function handle_sync_now() {
