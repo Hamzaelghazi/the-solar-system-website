@@ -163,6 +163,96 @@ class WPSB_Shopify_API {
     }
 
     /**
+     * Reliable SKU → variant lookup via the Admin GraphQL API. The Admin API
+     * supports `sku:` search directly (the Storefront search does not, on all
+     * plans/versions), and it finds variants regardless of channel publication,
+     * so it is the preferred linker path whenever an Admin token is present.
+     * Requires the Admin token to include read_products.
+     *
+     * Returns the same shape as get_variant_by_sku() (a product array with a
+     * `matched_variant`), or null.
+     */
+    public function admin_variant_by_sku($sku) {
+        $sku = trim((string) $sku);
+        if ($sku === '' || !$this->has_admin()) {
+            return null;
+        }
+        $query = 'query($q: String!) {
+            productVariants(first: 10, query: $q) {
+                edges { node {
+                    id sku title availableForSale price
+                    product { id handle title featuredImage { url altText } }
+                } }
+            }
+        }';
+        $data = $this->admin_graphql($query, ['q' => 'sku:' . $sku]);
+        if (is_wp_error($data) || empty($data['productVariants']['edges'])) {
+            return null;
+        }
+        foreach ($data['productVariants']['edges'] as $edge) {
+            $node = $edge['node'];
+            if (empty($node['sku']) || strcasecmp($node['sku'], $sku) !== 0) {
+                continue;
+            }
+            $variant = [
+                'id'        => $node['id'],
+                'title'     => $node['title'] ?? '',
+                'sku'       => $node['sku'],
+                'available' => !empty($node['availableForSale']),
+                'price'     => isset($node['price']) ? (float) $node['price'] : null,
+                'currency'  => get_option('wpsb_currency', 'USD'),
+                'compare_at'=> null,
+            ];
+            return [
+                'id'              => $node['product']['id'] ?? '',
+                'title'           => $node['product']['title'] ?? '',
+                'handle'          => $node['product']['handle'] ?? '',
+                'image'           => $node['product']['featuredImage']['url'] ?? '',
+                'image_alt'       => $node['product']['featuredImage']['altText'] ?? '',
+                'variants'        => [$variant],
+                'default_variant' => $variant['id'],
+                'matched_variant' => $variant,
+            ];
+        }
+        return null;
+    }
+
+    /**
+     * Execute an Admin GraphQL query with the Admin token.
+     *
+     * @return array|WP_Error decoded `data`.
+     */
+    public function admin_graphql($query, $variables = []) {
+        $domain = $this->domain();
+        $token  = get_option('wpsb_admin_token', '');
+        if (!$domain || !$token) {
+            return new WP_Error('wpsb_no_admin', __('Shopify Admin token not configured.', 'wpsb'));
+        }
+        $endpoint = sprintf('https://%s/admin/api/%s/graphql.json', $domain, WPSB_API_VERSION);
+        $response = wp_remote_post($endpoint, [
+            'timeout' => 25,
+            'headers' => [
+                'Content-Type'           => 'application/json',
+                'X-Shopify-Access-Token' => $token,
+            ],
+            'body' => wp_json_encode(['query' => $query, 'variables' => (object) $variables]),
+        ]);
+        if (is_wp_error($response)) {
+            return $response;
+        }
+        $code = wp_remote_retrieve_response_code($response);
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        if ($code < 200 || $code >= 300) {
+            return new WP_Error('wpsb_admin_gql_' . $code, sprintf(__('Admin GraphQL HTTP %d.', 'wpsb'), $code));
+        }
+        if (!empty($body['errors'])) {
+            $msg = $body['errors'][0]['message'] ?? __('Admin GraphQL error.', 'wpsb');
+            return new WP_Error('wpsb_admin_gql', $msg);
+        }
+        return $body['data'] ?? [];
+    }
+
+    /**
      * List catalogue products (paged) for the admin Shopify Products browser.
      *
      * @return array{products:array,cursor:?string}|WP_Error

@@ -214,15 +214,33 @@ class WPSB_Products {
             if (!$wc) {
                 continue;
             }
-            // Try by handle/name first.
-            $handle  = get_post_meta($pid, '_wpsb_handle', true);
-            $candidate = $handle ?: sanitize_title($wc->get_name());
-            $product = $api->get_product_by_handle($candidate);
-            $variant = $product ? $product['default_variant'] : '';
+            // Try by handle first — check the stored handle, the product's real
+            // slug, AND the slugified name, since any of them might equal the
+            // Shopify handle (they often differ from the display title).
+            $candidates = array_unique(array_filter([
+                get_post_meta($pid, '_wpsb_handle', true),
+                get_post_field('post_name', $pid),
+                sanitize_title($wc->get_name()),
+            ]));
+            $product = null;
+            $variant = '';
+            foreach ($candidates as $candidate) {
+                $product = $api->get_product_by_handle($candidate);
+                if ($product) {
+                    $variant = $product['default_variant'];
+                    break;
+                }
+            }
 
-            // Fall back to SKU.
+            // Fall back to SKU. Prefer the Admin API (reliable SKU search) when
+            // an Admin token is present, else the Storefront search.
             if (!$product && $wc->get_sku()) {
-                $bySku = $api->get_variant_by_sku($wc->get_sku());
+                $bySku = $api->has_admin()
+                    ? $api->admin_variant_by_sku($wc->get_sku())
+                    : null;
+                if (!$bySku) {
+                    $bySku = $api->get_variant_by_sku($wc->get_sku());
+                }
                 if ($bySku && !empty($bySku['matched_variant'])) {
                     $product = $bySku;
                     $variant = $bySku['matched_variant']['id'];
