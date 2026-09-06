@@ -292,18 +292,20 @@ class WPSB_Products {
             $this->redirect_with(__('Product not found.', 'wpsb'), 'error');
         }
 
-        $image = wp_get_attachment_url(get_post_thumbnail_id($pid));
+        // By design, Shopify holds ONLY SKU, price and item number for each
+        // product — no images, no descriptions. Those stay in WordPress and are
+        // shown on the WordPress checkout. So the push payload deliberately omits
+        // body_html and images and sends just the title (required by Shopify),
+        // the SKU and the price.
         $payload = [
-            'title'     => $wc->get_name(),
-            'body_html' => $wc->get_description(),
-            'variants'  => [[
-                'price' => (string) $wc->get_price(),
-                'sku'   => $wc->get_sku(),
+            'title'    => $wc->get_name(),
+            'status'   => 'active',
+            'variants' => [[
+                'price'                => (string) $wc->get_price(),
+                'sku'                  => $wc->get_sku(),
+                'inventory_management' => null,
             ]],
         ];
-        if ($image && strpos($image, 'localhost') === false && strpos($image, '127.0.0.1') === false) {
-            $payload['images'] = [['src' => $image]];
-        }
 
         $res = WPSB_Shopify_API::instance()->push_product($payload);
         if (is_wp_error($res) || empty($res['product'])) {

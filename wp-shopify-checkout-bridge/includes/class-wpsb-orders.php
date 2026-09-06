@@ -68,14 +68,24 @@ class WPSB_Orders {
 
     private function reconcile_order($order) {
         $sid = '';
+        $wc_order_id = 0;
         if (!empty($order['note_attributes']) && is_array($order['note_attributes'])) {
             foreach ($order['note_attributes'] as $attr) {
-                if (($attr['name'] ?? '') === 'wpsb_sid') {
+                $name = $attr['name'] ?? '';
+                if ($name === 'wpsb_sid') {
                     $sid = sanitize_text_field($attr['value'] ?? '');
-                    break;
+                } elseif ($name === 'wpsb_wc_order_id') {
+                    $wc_order_id = (int) ($attr['value'] ?? 0);
                 }
             }
         }
+
+        // Mark the matching WooCommerce order paid, if we carried its id through
+        // the Shopify checkout attributes (new gateway flow).
+        if ($wc_order_id) {
+            $this->complete_wc_order($wc_order_id, $order);
+        }
+
         if (!$sid) {
             return; // not one of ours (or attribution stripped)
         }
@@ -110,5 +120,47 @@ class WPSB_Orders {
             'status'              => 'converted',
             'updated_at'          => current_time('mysql'),
         ], ['id' => $cart->id]);
+    }
+
+    /**
+     * Mark a WooCommerce order paid once its Shopify counterpart is detected.
+     * Only advances an order that is still awaiting payment, and only when the
+     * Shopify order is actually paid — never downgrades a completed order, and
+     * is idempotent across polls.
+     */
+    private function complete_wc_order($wc_order_id, $shopify_order) {
+        if (!class_exists('WooCommerce')) {
+            return;
+        }
+        $order = wc_get_order($wc_order_id);
+        if (!$order) {
+            return;
+        }
+        // Already handled?
+        if ($order->get_meta('_wpsb_shopify_order_id')) {
+            return;
+        }
+        // Only settle when Shopify reports the money is in.
+        $financial = $shopify_order['financial_status'] ?? '';
+        if (!in_array($financial, ['paid', 'partially_paid', 'authorized'], true)) {
+            return;
+        }
+        if (!$order->needs_payment() && !$order->has_status(['pending', 'failed', 'on-hold'])) {
+            return;
+        }
+
+        $order->update_meta_data('_wpsb_shopify_order_id', (string) ($shopify_order['id'] ?? ''));
+        $order->save();
+
+        $note = sprintf(
+            __('Payment confirmed on Shopify (order %1$s, %2$s %3$s).', 'wpsb'),
+            (string) ($shopify_order['id'] ?? '—'),
+            isset($shopify_order['total_price']) ? $shopify_order['total_price'] : '',
+            $shopify_order['currency'] ?? ''
+        );
+        // payment_complete() moves the order to processing/completed per WC rules
+        // and records the transaction id.
+        $order->payment_complete((string) ($shopify_order['id'] ?? ''));
+        $order->add_order_note($note);
     }
 }

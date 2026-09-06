@@ -26,10 +26,13 @@ class WPSB_Checkout {
         // First-touch attribution: capture landing UTMs / referrer once.
         add_action('init', [$this, 'capture_attribution'], 2);
 
-        // Intercept the WooCommerce checkout step (server-side fallback path).
-        add_action('template_redirect', [$this, 'maybe_redirect_checkout']);
+        // NOTE (v1.12): the checkout page is no longer intercepted. WooCommerce
+        // renders its full native checkout (with WordPress product images and
+        // billing/shipping fields); the hand-off to Shopify happens only when
+        // the shopper clicks "Place Order", via the WPSB_Gateway payment method.
 
-        // Background checkout builder used by the spinner.
+        // Background checkout builder (legacy AJAX path, still available for the
+        // shortcode buy button's optional express flow).
         add_action('wp_ajax_wpsb_build_checkout', [$this, 'ajax_build_checkout']);
         add_action('wp_ajax_nopriv_wpsb_build_checkout', [$this, 'ajax_build_checkout']);
 
@@ -123,35 +126,139 @@ class WPSB_Checkout {
     }
 
     /* ------------------------------------------------------------------ */
-    /* Checkout interception                                               */
+    /* Order → Shopify checkout (Place Order hand-off)                     */
     /* ------------------------------------------------------------------ */
 
     /**
-     * Server-side fallback: when a shopper reaches the WooCommerce checkout page
-     * with an eligible cart, build the Shopify checkout and redirect. The /cart
-     * page is intentionally left viewable so shoppers can review first.
+     * Build a Shopify hosted-checkout URL for a placed WooCommerce order. Called
+     * by WPSB_Gateway::process_payment() after WooCommerce has validated the
+     * form and created the order. Shopify receives ONLY: the linked variant
+     * (matched by SKU), quantity, the customer email/address (via prefill), and
+     * the "source: Online Store" attribute — never images or descriptions.
+     *
+     * @param WC_Order $order
+     * @return string|WP_Error checkout URL
      */
-    public function maybe_redirect_checkout() {
-        if (!class_exists('WooCommerce') || !function_exists('is_checkout')) {
-            return;
+    public function create_checkout_from_order($order) {
+        if (!$order instanceof WC_Order) {
+            return new WP_Error('wpsb_no_order', __('Invalid order.', 'wpsb'));
         }
-        if (!is_checkout() || is_wc_endpoint_url('order-received')) {
-            return;
+
+        // Fraud/bot gate — applies to everyone uniformly.
+        $gate = WPSB_Risk_Shield::instance()->check();
+        if (is_wp_error($gate)) {
+            return $gate;
         }
-        $result = $this->build_from_wc_cart();
-        if (is_wp_error($result) || empty($result['url'])) {
-            // No eligible items → send to the configured redirect if set.
-            $fallback = get_option('wpsb_wc_redirect', '');
-            if ($fallback) {
-                wp_safe_redirect($fallback);
-                exit;
+
+        $lines    = [];
+        $snapshot = [];
+        $skus     = [];
+        foreach ($order->get_items() as $item) {
+            $product = $item->get_product();
+            if (!$product) {
+                continue;
             }
-            return;
+            $pid        = $product->get_id();
+            $parent_id  = $product->get_parent_id();
+            $variant_id = get_post_meta($pid, '_wpsb_variant_id', true);
+            if (!$variant_id && $parent_id) {
+                $variant_id = get_post_meta($parent_id, '_wpsb_variant_id', true);
+            }
+            if (!$variant_id) {
+                return new WP_Error(
+                    'wpsb_unlinked_item',
+                    sprintf(__('"%s" is not linked to a Shopify product yet, so it cannot be checked out.', 'wpsb'), $item->get_name())
+                );
+            }
+            $qty = max(1, (int) $item->get_quantity());
+            $lines[] = ['variantId' => $variant_id, 'quantity' => $qty];
+            $snapshot[] = ['variant' => $variant_id, 'qty' => $qty, 'title' => $item->get_name()];
+            if ($product->get_sku()) {
+                $skus[] = $product->get_sku();
+            }
         }
-        // Note: the WooCommerce cart is intentionally NOT emptied, so a shopper
-        // who returns without buying keeps their items (v1.11).
-        wp_redirect($result['url']); // external Shopify URL
-        exit;
+        if (!$lines) {
+            return new WP_Error('wpsb_no_linked_items', __('No Shopify-linked items in this order.', 'wpsb'));
+        }
+
+        $attr = self::get_attribution();
+
+        // Shopify receives only these cart attributes: our reconciliation keys,
+        // the required "Online Store" source, and the matched SKUs / item
+        // numbers. No product images, descriptions, or specs are ever sent.
+        $attributes = [
+            'source'            => 'Online Store',
+            'wpsb_sid'          => WP_Shopify_Bridge::session_id(),
+            'wpsb_wc_order_id'  => (string) $order->get_id(),
+            'wpsb_return_to'    => $order->get_checkout_order_received_url(),
+        ];
+        if ($skus) {
+            $attributes['item_numbers'] = implode(',', array_slice($skus, 0, 50));
+        }
+        foreach ($attr as $k => $v) {
+            $attributes[$k] = $v;
+        }
+
+        $url = WPSB_Shopify_API::instance()->create_checkout($lines, [
+            'email'      => $order->get_billing_email(),
+            'attributes' => $attributes,
+            'note'       => sprintf(__('WooCommerce order #%s (Online Store)', 'wpsb'), $order->get_order_number()),
+        ]);
+        if (is_wp_error($url)) {
+            return $url;
+        }
+
+        // Prefill customer contact + shipping on the Shopify checkout via the
+        // long-standing checkout[...] URL params (robust across API versions).
+        $url = $this->prefill_customer($url, $order);
+
+        // Carry UTMs so Shopify's own session attribution reads the real source.
+        $utm_query = [];
+        foreach (['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'] as $k) {
+            if (!empty($attr[$k])) {
+                $utm_query[$k] = $attr[$k];
+            }
+        }
+        if ($utm_query) {
+            $url = add_query_arg($utm_query, $url);
+        }
+
+        $this->record_cart($snapshot, $url, $order->get_billing_email(), $attr);
+        return $url;
+    }
+
+    /**
+     * Append Shopify checkout prefill params for the buyer's contact + shipping
+     * address, so they don't retype what they already entered on WordPress.
+     */
+    private function prefill_customer($url, $order) {
+        // Prefer shipping address; fall back to billing when shipping is blank.
+        $first = $order->get_shipping_first_name() ?: $order->get_billing_first_name();
+        $last  = $order->get_shipping_last_name()  ?: $order->get_billing_last_name();
+        $addr1 = $order->get_shipping_address_1()   ?: $order->get_billing_address_1();
+        $addr2 = $order->get_shipping_address_2()   ?: $order->get_billing_address_2();
+        $city  = $order->get_shipping_city()        ?: $order->get_billing_city();
+        $state = $order->get_shipping_state()       ?: $order->get_billing_state();
+        $zip   = $order->get_shipping_postcode()    ?: $order->get_billing_postcode();
+        $ctry  = $order->get_shipping_country()     ?: $order->get_billing_country();
+        $phone = $order->get_billing_phone();
+
+        $params = array_filter([
+            'checkout[email]'                        => $order->get_billing_email(),
+            'checkout[shipping_address][first_name]' => $first,
+            'checkout[shipping_address][last_name]'  => $last,
+            'checkout[shipping_address][address1]'   => $addr1,
+            'checkout[shipping_address][address2]'   => $addr2,
+            'checkout[shipping_address][city]'       => $city,
+            'checkout[shipping_address][province]'   => $state,
+            'checkout[shipping_address][zip]'        => $zip,
+            'checkout[shipping_address][country]'    => $ctry,
+            'checkout[shipping_address][phone]'      => $phone,
+        ], function ($v) {
+            return $v !== '' && $v !== null;
+        });
+
+        return $params ? add_query_arg(array_map('rawurlencode', $params), $url) : $url;
     }
 
     /**

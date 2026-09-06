@@ -95,36 +95,24 @@
         return false;
     }
 
-    /* ---- WooCommerce checkout interception ---------------------------- */
+    /* ---- WooCommerce checkout ----------------------------------------- */
 
-    // On the cart page, intercept the "Proceed to checkout" click so we build
-    // the Shopify checkout in the background instead of loading the heavy WC
-    // checkout page first. The server-side redirect remains as a fallback.
+    // The cart → checkout step is NOT intercepted anymore. WooCommerce renders
+    // its full native checkout (with WordPress product images and the
+    // billing/shipping form); the hand-off to Shopify happens server-side when
+    // the shopper clicks "Place Order" and the "Pay via Shopify" gateway
+    // redirects them. We only show the spinner once that submit is under way.
     if (WPSB.wc) {
-        document.addEventListener('click', function (e) {
-            var link = e.target.closest ? e.target.closest('a.checkout-button, a.wc-proceed-to-checkout, .checkout-button') : null;
-            if (!link) { return; }
-            e.preventDefault();
-            showSpinner();
-            firePixels();
-            post('wpsb_build_checkout', {}).then(function (res) {
-                if (res && res.success && res.data && res.data.url) {
-                    window.location.href = res.data.url;
-                } else if (WPSB.wc_checkout) {
-                    // Fall back to the normal WooCommerce checkout (server-side
-                    // template_redirect will take it to Shopify).
-                    window.location.href = WPSB.wc_checkout;
-                } else {
-                    hideSpinner();
+        document.addEventListener('submit', function (e) {
+            var form = e.target;
+            if (form && form.name === 'checkout' || (form && form.classList && form.classList.contains('checkout'))) {
+                var selected = document.querySelector('input[name="payment_method"]:checked');
+                if (selected && selected.value === 'wpsb_shopify') {
+                    firePixels();
+                    showSpinner('Taking you to secure checkout…');
                 }
-            }).catch(function () {
-                if (WPSB.wc_checkout) {
-                    window.location.href = WPSB.wc_checkout;
-                } else {
-                    hideSpinner();
-                }
-            });
-        });
+            }
+        }, true);
     }
 
     /* ---- Deferred pixels ---------------------------------------------- */

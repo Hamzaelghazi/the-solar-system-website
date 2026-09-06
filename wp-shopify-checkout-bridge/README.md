@@ -1,5 +1,29 @@
 Routes WordPress traffic to Shopify checkout with full session roaming.
 
+## What changed in v1.12.0
+
+- **Native WordPress checkout, pay on Shopify.** The checkout page is no longer
+  intercepted. Shoppers now see WooCommerce's **full native checkout** — product
+  **images from the WordPress media library**, titles, prices, quantities,
+  subtotal/tax/shipping/total, and the billing/shipping form. Payment is a new
+  WooCommerce gateway, **"Pay via Shopify"**: on **Place Order**, WooCommerce
+  validates the form and creates the order, then the shopper is redirected to
+  the Shopify hosted checkout to pay. Enable it under **WooCommerce → Settings →
+  Payments**.
+- **Shopify receives only SKU, price, quantity, customer info, and
+  `source: Online Store`.** The Shopify cart is built from the SKU-matched
+  variant; the buyer's email + shipping address are prefilled via checkout URL
+  params. **No product images or descriptions are ever sent to Shopify** — they
+  stay in WordPress. The matched SKUs ride along as an `item_numbers` cart
+  attribute.
+- **Order reconciliation.** The WooCommerce order id is carried in the Shopify
+  cart attributes (`wpsb_wc_order_id`). The order-poll cron marks the matching
+  WooCommerce order **paid** once Shopify reports the payment (requires the Admin
+  token with `read_orders`).
+- **Push to Shopify strips images + descriptions.** WordPress → Shopify push now
+  sends only title, SKU and price, so Shopify products stay image/description-free
+  by design.
+
 ## What changed in v1.11.4
 
 - **Fixes "Link" reporting `linked 0` while products sit unconnected.** The
