@@ -207,9 +207,10 @@ class WPSB_Products {
         $api = WPSB_Shopify_API::instance();
 
         $ids = $this->unlinked_ids(50);
-        $linked  = 0;
-        $no_sku  = [];   // WooCommerce products with no SKU set
-        $no_match = [];  // SKU set, but no Shopify variant carries it
+        $linked   = 0;
+        $no_sku   = [];   // WooCommerce products with no SKU set
+        $no_match = [];   // SKU set, but no Shopify variant carries it
+        $errors   = [];   // Shopify API errors (bad token, scope, etc.), de-duped
 
         foreach ($ids as $pid) {
             $wc = wc_get_product($pid);
@@ -222,10 +223,20 @@ class WPSB_Products {
                 continue;
             }
 
-            $bySku = $api->has_admin() ? $api->admin_variant_by_sku($sku) : null;
-            if (!$bySku) {
+            // Admin API is the reliable SKU path. If it errors (bad token,
+            // missing read_products, rejected field), capture the real reason
+            // instead of misreporting it as "no variant found". Only fall back
+            // to the Storefront search when there is no Admin token at all.
+            if ($api->has_admin()) {
+                $bySku = $api->admin_variant_by_sku($sku);
+                if (is_wp_error($bySku)) {
+                    $errors[$bySku->get_error_message()] = true;
+                    continue;
+                }
+            } else {
                 $bySku = $api->get_variant_by_sku($sku);
             }
+
             if (!$bySku || empty($bySku['matched_variant'])) {
                 $no_match[] = sprintf('%s (%s)', $wc->get_name(), $sku);
                 continue;
@@ -243,6 +254,12 @@ class WPSB_Products {
         }
 
         $msg = sprintf(__('Linked %d product(s) by SKU.', 'wpsb'), $linked);
+        if ($errors) {
+            $msg .= ' ' . sprintf(
+                __('Shopify API error (fix this first): %s', 'wpsb'),
+                esc_html(implode(' | ', array_slice(array_keys($errors), 0, 3)))
+            );
+        }
         if ($no_match) {
             $msg .= ' ' . sprintf(
                 __('No Shopify variant found for: %s.', 'wpsb'),

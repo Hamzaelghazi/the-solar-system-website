@@ -177,28 +177,48 @@ class WPSB_Shopify_API {
         if ($sku === '' || !$this->has_admin()) {
             return null;
         }
+        // Only fields guaranteed on the Admin ProductVariant/Product across API
+        // versions. (An earlier build requested `availableForSale`, which is a
+        // Storefront-only field on some versions; when the pinned Admin version
+        // rejects it the whole query 4xx's, and the linker used to swallow that
+        // as "not found". Availability is derived from inventory instead.)
         $query = 'query($q: String!) {
-            productVariants(first: 10, query: $q) {
+            productVariants(first: 25, query: $q) {
                 edges { node {
-                    id sku title availableForSale price
-                    product { id handle title featuredImage { url altText } }
+                    id sku title price inventoryQuantity inventoryPolicy
+                    product { id handle title status featuredImage { url altText } }
                 } }
             }
         }';
         $data = $this->admin_graphql($query, ['q' => 'sku:' . $sku]);
-        if (is_wp_error($data) || empty($data['productVariants']['edges'])) {
+
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[WPSB] admin_variant_by_sku sku=' . var_export($sku, true)
+                . ' -> ' . (is_wp_error($data)
+                    ? 'ERROR: ' . $data->get_error_message()
+                    : wp_json_encode($data)));
+        }
+
+        // Propagate real API errors (bad token, missing scope, rejected field)
+        // so the linker can surface them instead of reporting a false "no match".
+        if (is_wp_error($data)) {
+            return $data;
+        }
+        if (empty($data['productVariants']['edges'])) {
             return null;
         }
         foreach ($data['productVariants']['edges'] as $edge) {
             $node = $edge['node'];
-            if (empty($node['sku']) || strcasecmp($node['sku'], $sku) !== 0) {
-                continue;
+            if (!isset($node['sku']) || trim((string) $node['sku']) !== $sku) {
+                continue; // exact, case-sensitive match after trim
             }
+            $qty       = isset($node['inventoryQuantity']) ? (int) $node['inventoryQuantity'] : null;
+            $available = (($node['inventoryPolicy'] ?? '') === 'CONTINUE') || $qty === null || $qty > 0;
             $variant = [
                 'id'        => $node['id'],
                 'title'     => $node['title'] ?? '',
-                'sku'       => $node['sku'],
-                'available' => !empty($node['availableForSale']),
+                'sku'       => trim((string) $node['sku']),
+                'available' => $available,
                 'price'     => isset($node['price']) ? (float) $node['price'] : null,
                 'currency'  => get_option('wpsb_currency', 'USD'),
                 'compare_at'=> null,
@@ -240,12 +260,23 @@ class WPSB_Shopify_API {
         if (is_wp_error($response)) {
             return $response;
         }
+        $raw  = wp_remote_retrieve_body($response);
         $code = wp_remote_retrieve_response_code($response);
-        $body = json_decode(wp_remote_retrieve_body($response), true);
+        $body = json_decode($raw, true);
         if ($code < 200 || $code >= 300) {
-            return new WP_Error('wpsb_admin_gql_' . $code, sprintf(__('Admin GraphQL HTTP %d.', 'wpsb'), $code));
+            // 401/403 usually mean a bad Admin token or a missing scope
+            // (read_products). Include the body so the reason is visible.
+            $detail = '';
+            if (is_array($body) && !empty($body['errors'])) {
+                $detail = is_string($body['errors']) ? $body['errors'] : wp_json_encode($body['errors']);
+            }
+            return new WP_Error(
+                'wpsb_admin_gql_' . $code,
+                sprintf(__('Admin GraphQL HTTP %1$d. %2$s', 'wpsb'), $code, $detail)
+            );
         }
         if (!empty($body['errors'])) {
+            // Field/validation errors come back as HTTP 200 with an errors array.
             $msg = $body['errors'][0]['message'] ?? __('Admin GraphQL error.', 'wpsb');
             return new WP_Error('wpsb_admin_gql', $msg);
         }

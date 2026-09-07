@@ -1,5 +1,18 @@
 Routes WordPress traffic to Shopify checkout with full session roaming.
 
+## What changed in v1.12.1
+
+- **Fixes "Link by SKU" reporting "no Shopify variant found" for a SKU that
+  clearly exists.** The Admin SKU lookup requested a variant field
+  (`availableForSale`) that is Storefront-only on some Admin API versions; when
+  the pinned version rejected it, the whole GraphQL query errored and the linker
+  silently swallowed it as "not found". The query now uses only version-safe
+  Admin fields (`inventoryQuantity` / `inventoryPolicy`), and — importantly — the
+  linker now **surfaces the real Shopify API error** in the admin notice instead
+  of masking it, so a bad token or missing `read_products` scope is obvious.
+  SKU comparison is an exact, trimmed, case-sensitive match. Set `WP_DEBUG` to
+  log the raw request/response for each SKU lookup.
+
 ## What changed in v1.12.0
 
 - **Native WordPress checkout, pay on Shopify.** The checkout page is no longer
