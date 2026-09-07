@@ -238,6 +238,73 @@ class WPSB_Shopify_API {
     }
 
     /**
+     * Build a SKU → variant map for the entire Shopify catalogue via the Admin
+     * API, paginating through every variant. Returned once per link run so the
+     * linker can match ALL WooCommerce products in memory (no per-product API
+     * call, no ID window). Keyed by trimmed SKU; the first variant wins on a
+     * duplicate SKU. Bounded by $max_pages so a huge catalogue can't run away.
+     *
+     * @return array<string,array>|WP_Error  [ sku => variant-shaped array ]
+     */
+    public function all_variant_skus($max_pages = 40) {
+        if (!$this->has_admin()) {
+            return new WP_Error('wpsb_no_admin', __('Shopify Admin token not configured.', 'wpsb'));
+        }
+        $query = 'query($after: String) {
+            productVariants(first: 250, after: $after) {
+                pageInfo { hasNextPage endCursor }
+                edges { node {
+                    id sku title price inventoryQuantity inventoryPolicy
+                    product { id handle title status featuredImage { url altText } }
+                } }
+            }
+        }';
+
+        $map    = [];
+        $after  = null;
+        $pages  = 0;
+        do {
+            $data = $this->admin_graphql($query, ['after' => $after]);
+            if (is_wp_error($data)) {
+                return $data;
+            }
+            $conn = $data['productVariants'] ?? [];
+            foreach (($conn['edges'] ?? []) as $edge) {
+                $node = $edge['node'];
+                $sku  = isset($node['sku']) ? trim((string) $node['sku']) : '';
+                if ($sku === '' || isset($map[$sku])) {
+                    continue;
+                }
+                $qty       = isset($node['inventoryQuantity']) ? (int) $node['inventoryQuantity'] : null;
+                $available = (($node['inventoryPolicy'] ?? '') === 'CONTINUE') || $qty === null || $qty > 0;
+                $variant = [
+                    'id'        => $node['id'],
+                    'title'     => $node['title'] ?? '',
+                    'sku'       => $sku,
+                    'available' => $available,
+                    'price'     => isset($node['price']) ? (float) $node['price'] : null,
+                    'currency'  => get_option('wpsb_currency', 'USD'),
+                    'compare_at'=> null,
+                ];
+                $map[$sku] = [
+                    'id'              => $node['product']['id'] ?? '',
+                    'title'           => $node['product']['title'] ?? '',
+                    'handle'          => $node['product']['handle'] ?? '',
+                    'image'           => $node['product']['featuredImage']['url'] ?? '',
+                    'image_alt'       => $node['product']['featuredImage']['altText'] ?? '',
+                    'variants'        => [$variant],
+                    'default_variant' => $variant['id'],
+                    'matched_variant' => $variant,
+                ];
+            }
+            $after = !empty($conn['pageInfo']['hasNextPage']) ? ($conn['pageInfo']['endCursor'] ?? null) : null;
+            $pages++;
+        } while ($after && $pages < $max_pages);
+
+        return $map;
+    }
+
+    /**
      * Execute an Admin GraphQL query with the Admin token.
      *
      * @return array|WP_Error decoded `data`.

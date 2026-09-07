@@ -199,18 +199,37 @@ class WPSB_Products {
      * Link unlinked WooCommerce products to Shopify strictly by SKU. The SKU is
      * the single match key: a WooCommerce product links to the Shopify variant
      * carrying the same SKU, and to nothing otherwise (no name/handle guessing).
-     * Prefers the Admin API SKU search (reliable, sees unpublished variants) and
-     * falls back to the Storefront SKU search when there is no Admin token.
+     *
+     * ALL unlinked products are processed in one pass. With an Admin token we
+     * fetch Shopify's whole SKU→variant map once and match in memory — this
+     * avoids per-product API calls and, crucially, the old bug where only the
+     * 50 lowest-ID products were ever looked up (so a high-ID product could
+     * never link). Without an Admin token we fall back to the Storefront SKU
+     * search per product, bounded to avoid timeouts.
      */
     public function handle_link_now() {
         $this->guard('wpsb_link_now');
         $api = WPSB_Shopify_API::instance();
 
-        $ids = $this->unlinked_ids(50);
+        $ids = $this->unlinked_ids(0); // 0 = ALL unlinked products, no ID window
         $linked   = 0;
         $no_sku   = [];   // WooCommerce products with no SKU set
         $no_match = [];   // SKU set, but no Shopify variant carries it
         $errors   = [];   // Shopify API errors (bad token, scope, etc.), de-duped
+
+        // Preferred path: one catalogue fetch, then match every product locally.
+        $map = null;
+        if ($api->has_admin()) {
+            $map = $api->all_variant_skus();
+            if (is_wp_error($map)) {
+                $this->redirect_with(sprintf(
+                    __('Shopify API error (fix this first): %s', 'wpsb'),
+                    esc_html($map->get_error_message())
+                ), 'error');
+            }
+        }
+
+        $sf_lookups = 0; // bound the no-Admin Storefront fallback
 
         foreach ($ids as $pid) {
             $wc = wc_get_product($pid);
@@ -223,17 +242,14 @@ class WPSB_Products {
                 continue;
             }
 
-            // Admin API is the reliable SKU path. If it errors (bad token,
-            // missing read_products, rejected field), capture the real reason
-            // instead of misreporting it as "no variant found". Only fall back
-            // to the Storefront search when there is no Admin token at all.
-            if ($api->has_admin()) {
-                $bySku = $api->admin_variant_by_sku($sku);
-                if (is_wp_error($bySku)) {
-                    $errors[$bySku->get_error_message()] = true;
-                    continue;
-                }
+            if ($map !== null) {
+                // Exact, trimmed, case-sensitive match against the Shopify map.
+                $bySku = isset($map[$sku]) ? $map[$sku] : null;
             } else {
+                if ($sf_lookups >= 100) {
+                    continue; // safety cap without an Admin token
+                }
+                $sf_lookups++;
                 $bySku = $api->get_variant_by_sku($sku);
             }
 
@@ -262,14 +278,17 @@ class WPSB_Products {
         }
         if ($no_match) {
             $msg .= ' ' . sprintf(
-                __('No Shopify variant found for: %s.', 'wpsb'),
-                esc_html(implode(', ', array_slice($no_match, 0, 10)))
+                /* translators: 1: count, 2: first few product names */
+                __('%1$d had no matching Shopify SKU (e.g. %2$s).', 'wpsb'),
+                count($no_match),
+                esc_html(implode(', ', array_slice($no_match, 0, 8)))
             );
         }
         if ($no_sku) {
             $msg .= ' ' . sprintf(
-                __('No SKU set on: %s.', 'wpsb'),
-                esc_html(implode(', ', array_slice($no_sku, 0, 10)))
+                __('%1$d had no SKU set (e.g. %2$s).', 'wpsb'),
+                count($no_sku),
+                esc_html(implode(', ', array_slice($no_sku, 0, 8)))
             );
         }
         $this->redirect_with($msg);

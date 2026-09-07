@@ -1,5 +1,17 @@
 Routes WordPress traffic to Shopify checkout with full session roaming.
 
+## What changed in v1.12.2
+
+- **Fixes "Link by SKU" never reaching most products.** The link pass used to
+  look up only the 50 lowest-ID unlinked products (`ORDER BY id ASC LIMIT 50`),
+  so a higher-ID product could never be attempted — and if the first 50 all had
+  non-matching SKUs, the window never advanced and the same product stayed
+  unreachable no matter how many times you clicked. The linker now processes
+  **every** unlinked product in one pass: with an Admin token it fetches
+  Shopify's full SKU→variant map once (paginated) and matches all products in
+  memory (no per-product API call, no ID window); without an Admin token it uses
+  the Storefront SKU search per product, bounded to 100 lookups.
+
 ## What changed in v1.12.1
 
 - **Fixes "Link by SKU" reporting "no Shopify variant found" for a SKU that
