@@ -43,6 +43,7 @@ class WPSB_Settings {
             'wpsb_trust_text'             => 'sanitize_text_field',
             'wpsb_free_ship_threshold'    => 'wpsb_sanitize_float',
             'wpsb_wc_redirect'            => 'esc_url_raw',
+            'wpsb_order_metadata'         => 'wpsb_sanitize_bool',
             'wpsb_recovery_enabled'       => 'wpsb_sanitize_bool',
             'wpsb_recovery_ai_enabled'    => 'wpsb_sanitize_bool',
             'wpsb_recovery_sequence'      => 'sanitize_text_field',
@@ -117,8 +118,12 @@ class WPSB_Settings {
                     $this->text_row('wpsb_trust_text', __('Trust row text', 'wpsb'), 'Secure checkout · 30-day returns');
                     $this->text_row('wpsb_free_ship_threshold', __('Free shipping threshold', 'wpsb'), '0');
                     $this->text_row('wpsb_wc_redirect', __('WooCommerce → Shopify redirect URL', 'wpsb'), '', __('Where an empty-eligible WooCommerce cart is sent (usually your Shopify /cart or a collection).', 'wpsb'));
+                    $this->checkbox_row('wpsb_order_metadata', __('Attach reconciliation data to Shopify orders', 'wpsb'));
                     ?>
                 </table>
+                <p class="description">
+                    <?php esc_html_e('Leave unchecked (recommended) so Shopify orders look like normal Online Store sales — no note and no "Additional details" attributes. The WooCommerce order is still marked paid, matched by customer email + total. Check it only if you need the exact WooCommerce order id / UTMs stored on the Shopify order.', 'wpsb'); ?>
+                </p>
 
                 <h2><?php esc_html_e('Pixels', 'wpsb'); ?></h2>
                 <table class="form-table" role="presentation">

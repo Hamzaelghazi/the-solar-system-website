@@ -1,5 +1,24 @@
 Routes WordPress traffic to Shopify checkout with full session roaming.
 
+## What changed in v1.13.0
+
+- **Shopify orders now look like organic Online Store sales.** By default the
+  plugin no longer attaches its technical metadata to the Shopify order — there's
+  no order **note** and no **Additional details** attributes (`source`,
+  `wpsb_sid`, `wpsb_wc_order_id`, `wpsb_return_to`, `item_numbers`, UTMs). The
+  order shows just the customer, line items and totals, exactly like a normal
+  sale. The WooCommerce order is still marked paid — the order poll now matches
+  the Shopify order to its WooCommerce order by **customer email + total** (only
+  when there is a single unambiguous unpaid match).
+- **Opt-in metadata.** A new setting, *Attach reconciliation data to Shopify
+  orders* (Settings → Storefront / Conversion), restores the previous behavior
+  for anyone who wants the exact WooCommerce order id / UTMs stored on the
+  Shopify order for precise matching.
+
+  Note: the line-item **name** in the Shopify order is the Shopify product's
+  title. If your Shopify products are titled "item 1/2/3", orders show those; to
+  show real names, give the Shopify products real titles.
+
 ## What changed in v1.12.4
 
 - **Fixes "merchandise ... does not exist" at Shopify checkout after a

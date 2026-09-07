@@ -80,14 +80,20 @@ class WPSB_Orders {
             }
         }
 
-        // Mark the matching WooCommerce order paid, if we carried its id through
-        // the Shopify checkout attributes (new gateway flow).
+        // Mark the matching WooCommerce order paid. If the technical attribute
+        // was carried through, use it; otherwise (clean-order mode) match the
+        // Shopify order to a still-unpaid WooCommerce order by email + total.
         if ($wc_order_id) {
             $this->complete_wc_order($wc_order_id, $order);
+        } else {
+            $found = $this->match_wc_order_by_email_total($order);
+            if ($found) {
+                $this->complete_wc_order($found, $order);
+            }
         }
 
         if (!$sid) {
-            return; // not one of ours (or attribution stripped)
+            return; // no recovery-cart key on this order
         }
 
         global $wpdb;
@@ -162,5 +168,46 @@ class WPSB_Orders {
         // and records the transaction id.
         $order->payment_complete((string) ($shopify_order['id'] ?? ''));
         $order->add_order_note($note);
+    }
+
+    /**
+     * Clean-order reconciliation: match a paid Shopify order to a still-unpaid
+     * WooCommerce order by billing email + total, within a recent window. Used
+     * when no technical attribute is attached to the Shopify order. Returns the
+     * WooCommerce order id, or 0 when there is no single unambiguous match.
+     */
+    private function match_wc_order_by_email_total($shopify_order) {
+        if (!class_exists('WooCommerce') || !function_exists('wc_get_orders')) {
+            return 0;
+        }
+        $email = isset($shopify_order['email']) ? sanitize_email($shopify_order['email']) : '';
+        if (!$email || !isset($shopify_order['total_price'])) {
+            return 0;
+        }
+        $total = (float) $shopify_order['total_price'];
+
+        $candidates = wc_get_orders([
+            'status'       => ['pending', 'on-hold', 'failed'],
+            'billing_email'=> $email,
+            'payment_method' => 'wpsb_shopify',
+            'date_created' => '>' . (time() - 3 * DAY_IN_SECONDS),
+            'limit'        => 10,
+            'return'       => 'objects',
+        ]);
+
+        $match = 0;
+        foreach ($candidates as $o) {
+            if ($o->get_meta('_wpsb_shopify_order_id')) {
+                continue; // already reconciled
+            }
+            // Compare totals to the cent.
+            if (abs((float) $o->get_total() - $total) <= 0.01) {
+                if ($match) {
+                    return 0; // ambiguous — two unpaid orders match; don't guess
+                }
+                $match = $o->get_id();
+            }
+        }
+        return $match;
     }
 }

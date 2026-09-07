@@ -29,6 +29,7 @@ $options = [
     'wpsb_free_ship_threshold',
     'wpsb_trust_text',
     'wpsb_wc_redirect',
+    'wpsb_order_metadata',
     'wpsb_orders_since',
     'wpsb_sync_offset',
     'wpsb_anthropic_key',

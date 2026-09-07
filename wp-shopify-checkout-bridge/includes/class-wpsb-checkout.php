@@ -203,26 +203,34 @@ class WPSB_Checkout {
 
         $attr = self::get_attribution();
 
-        // Shopify receives only these cart attributes: our reconciliation keys,
-        // the required "Online Store" source, and the matched SKUs / item
-        // numbers. No product images, descriptions, or specs are ever sent.
-        $attributes = [
-            'source'            => 'Online Store',
-            'wpsb_sid'          => WP_Shopify_Bridge::session_id(),
-            'wpsb_wc_order_id'  => (string) $order->get_id(),
-            'wpsb_return_to'    => $order->get_checkout_order_received_url(),
-        ];
-        if ($skus) {
-            $attributes['item_numbers'] = implode(',', array_slice($skus, 0, 50));
-        }
-        foreach ($attr as $k => $v) {
-            $attributes[$k] = $v;
+        // By default the Shopify order carries NO plugin metadata, so it reads
+        // exactly like an organic Online Store sale (no note, no "Additional
+        // details" attributes). The WooCommerce order is reconciled by email +
+        // total in the order poll instead. Turn on "Attach reconciliation data"
+        // in Settings to restore the technical attributes for precise matching.
+        $attach = get_option('wpsb_order_metadata') === '1';
+        $attributes = [];
+        $note = '';
+        if ($attach) {
+            $attributes = [
+                'source'           => 'Online Store',
+                'wpsb_sid'         => WP_Shopify_Bridge::session_id(),
+                'wpsb_wc_order_id' => (string) $order->get_id(),
+                'wpsb_return_to'   => $order->get_checkout_order_received_url(),
+            ];
+            if ($skus) {
+                $attributes['item_numbers'] = implode(',', array_slice($skus, 0, 50));
+            }
+            foreach ($attr as $k => $v) {
+                $attributes[$k] = $v;
+            }
+            $note = sprintf(__('WooCommerce order #%s (Online Store)', 'wpsb'), $order->get_order_number());
         }
 
         $url = WPSB_Shopify_API::instance()->create_checkout($lines, [
             'email'      => $order->get_billing_email(),
             'attributes' => $attributes,
-            'note'       => sprintf(__('WooCommerce order #%s (Online Store)', 'wpsb'), $order->get_order_number()),
+            'note'       => $note,
         ]);
         if (is_wp_error($url)) {
             return $url;
