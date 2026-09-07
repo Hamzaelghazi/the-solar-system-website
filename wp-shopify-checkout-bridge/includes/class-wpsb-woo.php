@@ -26,6 +26,44 @@ class WPSB_Woo {
         // Catch-all buy interceptor (works even when a block theme eats the
         // button's JS click): ?wpsb_buy=<variant> → Shopify checkout.
         add_action('template_redirect', [$this, 'catch_buy_fallback'], 1);
+
+        // Native "Buy Now" button on the single-product page: adds the item to
+        // the WooCommerce cart (native), then sends the shopper straight to the
+        // native checkout, where "Pay via Shopify" redirects them to Shopify to
+        // pay. Add to Cart stays 100% the theme's native button.
+        add_action('woocommerce_after_add_to_cart_button', [$this, 'buy_now_button']);
+        add_filter('woocommerce_add_to_cart_redirect', [$this, 'buy_now_redirect']);
+    }
+
+    /**
+     * Render a "Buy Now" submit button inside the theme's add-to-cart form. It
+     * submits the same form (so the selected quantity is respected), tagged so
+     * buy_now_redirect() knows to jump to checkout instead of staying on the
+     * product page.
+     */
+    public function buy_now_button() {
+        if (!function_exists('wc_get_checkout_url')) {
+            return;
+        }
+        global $product;
+        if (!$product || !$product->is_purchasable() || !$product->is_in_stock()) {
+            return;
+        }
+        echo '<button type="submit" name="wpsb_buy_now" value="1" '
+            . 'class="button alt wpsb-buy-now" style="margin-top:8px">'
+            . esc_html__('Buy Now', 'wpsb') . '</button>';
+    }
+
+    /**
+     * When the Buy Now button was used, redirect to the checkout after the item
+     * is added to the cart. Uses WooCommerce's own redirect filter so the add
+     * itself stays completely native.
+     */
+    public function buy_now_redirect($url) {
+        if (!empty($_REQUEST['wpsb_buy_now']) && function_exists('wc_get_checkout_url')) {
+            return wc_get_checkout_url();
+        }
+        return $url;
     }
 
     public function catch_buy_fallback() {

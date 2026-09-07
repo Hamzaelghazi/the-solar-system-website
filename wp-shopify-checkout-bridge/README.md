@@ -1,5 +1,15 @@
 Routes WordPress traffic to Shopify checkout with full session roaming.
 
+## What changed in v1.12.3
+
+- **Native "Buy Now" button.** The single-product page now shows a **Buy Now**
+  button beside the theme's native **Add to Cart**. Add to Cart stays 100% the
+  theme's own button; Buy Now adds the item to the WooCommerce cart (native,
+  respecting the chosen quantity) and jumps straight to the native checkout,
+  where the **Pay via Shopify** gateway redirects to Shopify for payment. So the
+  whole browse → add/buy → checkout experience is the native WooCommerce one,
+  and only the payment step leaves for Shopify.
+
 ## What changed in v1.12.2
 
 - **Fixes "Link by SKU" never reaching most products.** The link pass used to
