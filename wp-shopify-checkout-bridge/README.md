@@ -1,5 +1,18 @@
 Routes WordPress traffic to Shopify checkout with full session roaming.
 
+## What changed in v1.12.4
+
+- **Fixes "merchandise ... does not exist" at Shopify checkout after a
+  re-import.** When Shopify recreates a variant (e.g. re-importing the product
+  CSV), its variant id changes; the plugin used to check out with the stale
+  stored id, which Shopify rejects. Now the checkout **re-resolves each line's
+  SKU to its current Shopify variant** at Place Order (via the Admin API),
+  refreshing the stored id on the fly — a stale id can no longer break checkout.
+- **"Link to Shopify by SKU" now refreshes ALL products**, not just unlinked
+  ones, so it also corrects stale links from a re-import, and **clears** a stored
+  link whose SKU no longer matches any Shopify variant (so a dead id is never
+  used at checkout).
+
 ## What changed in v1.12.3
 
 - **Native "Buy Now" button.** The single-product page now shows a **Buy Now**

@@ -73,6 +73,16 @@ class WPSB_Products {
         );
     }
 
+    /** All published product IDs (used to REFRESH links, incl. already-linked). */
+    private function all_product_ids() {
+        global $wpdb;
+        return array_map('intval', $wpdb->get_col(
+            "SELECT ID FROM {$wpdb->posts}
+              WHERE post_type = 'product' AND post_status = 'publish'
+              ORDER BY ID ASC"
+        ));
+    }
+
     private function total_products() {
         if (!class_exists('WooCommerce')) {
             return 0;
@@ -211,8 +221,12 @@ class WPSB_Products {
         $this->guard('wpsb_link_now');
         $api = WPSB_Shopify_API::instance();
 
-        $ids = $this->unlinked_ids(0); // 0 = ALL unlinked products, no ID window
+        // Process ALL published products (not just currently-unlinked ones) so
+        // this button also REFRESHES stale links — e.g. after a Shopify
+        // re-import recreated variants with new ids. Matching stays SKU-only.
+        $ids = $this->all_product_ids();
         $linked   = 0;
+        $cleared  = 0;   // had a stale/dead link that no longer matches any SKU
         $no_sku   = [];   // WooCommerce products with no SKU set
         $no_match = [];   // SKU set, but no Shopify variant carries it
         $errors   = [];   // Shopify API errors (bad token, scope, etc.), de-duped
@@ -237,7 +251,13 @@ class WPSB_Products {
                 continue;
             }
             $sku = trim((string) $wc->get_sku());
+            $had_link = (string) get_post_meta($pid, '_wpsb_variant_id', true) !== '';
+
             if ($sku === '') {
+                if ($had_link) { // clear a link that can no longer be verified
+                    update_post_meta($pid, '_wpsb_variant_id', '');
+                    $cleared++;
+                }
                 $no_sku[] = $wc->get_name();
                 continue;
             }
@@ -254,6 +274,12 @@ class WPSB_Products {
             }
 
             if (!$bySku || empty($bySku['matched_variant'])) {
+                // No current match: clear any stale id so checkout can't hand
+                // Shopify a dead variant ("merchandise does not exist").
+                if ($had_link && $map !== null) {
+                    update_post_meta($pid, '_wpsb_variant_id', '');
+                    $cleared++;
+                }
                 $no_match[] = sprintf('%s (%s)', $wc->get_name(), $sku);
                 continue;
             }
@@ -269,7 +295,10 @@ class WPSB_Products {
             $linked++;
         }
 
-        $msg = sprintf(__('Linked %d product(s) by SKU.', 'wpsb'), $linked);
+        $msg = sprintf(__('Linked/refreshed %d product(s) by SKU.', 'wpsb'), $linked);
+        if ($cleared) {
+            $msg .= ' ' . sprintf(__('Cleared %d stale link(s) with no current Shopify SKU.', 'wpsb'), $cleared);
+        }
         if ($errors) {
             $msg .= ' ' . sprintf(
                 __('Shopify API error (fix this first): %s', 'wpsb'),

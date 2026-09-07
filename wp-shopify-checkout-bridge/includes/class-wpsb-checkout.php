@@ -150,6 +150,7 @@ class WPSB_Checkout {
             return $gate;
         }
 
+        $api      = WPSB_Shopify_API::instance();
         $lines    = [];
         $snapshot = [];
         $skus     = [];
@@ -160,9 +161,28 @@ class WPSB_Checkout {
             }
             $pid        = $product->get_id();
             $parent_id  = $product->get_parent_id();
-            $variant_id = get_post_meta($pid, '_wpsb_variant_id', true);
-            if (!$variant_id && $parent_id) {
-                $variant_id = get_post_meta($parent_id, '_wpsb_variant_id', true);
+            $sku        = trim((string) $product->get_sku());
+
+            // Resolve the SKU to its CURRENT Shopify variant at checkout time,
+            // so a stored id that went stale (e.g. Shopify recreated the variant
+            // on a re-import) can never break checkout. Refresh the stored meta
+            // when it drifts. Fall back to the stored id only if the live lookup
+            // is unavailable.
+            $variant_id = '';
+            if ($sku !== '' && $api->has_admin()) {
+                $live = $api->admin_variant_by_sku($sku);
+                if (!is_wp_error($live) && $live && !empty($live['matched_variant'])) {
+                    $variant_id = $live['matched_variant']['id'];
+                    if ($variant_id && get_post_meta($pid, '_wpsb_variant_id', true) !== $variant_id) {
+                        update_post_meta($pid, '_wpsb_variant_id', $variant_id);
+                    }
+                }
+            }
+            if (!$variant_id) {
+                $variant_id = get_post_meta($pid, '_wpsb_variant_id', true);
+                if (!$variant_id && $parent_id) {
+                    $variant_id = get_post_meta($parent_id, '_wpsb_variant_id', true);
+                }
             }
             if (!$variant_id) {
                 return new WP_Error(
@@ -173,8 +193,8 @@ class WPSB_Checkout {
             $qty = max(1, (int) $item->get_quantity());
             $lines[] = ['variantId' => $variant_id, 'quantity' => $qty];
             $snapshot[] = ['variant' => $variant_id, 'qty' => $qty, 'title' => $item->get_name()];
-            if ($product->get_sku()) {
-                $skus[] = $product->get_sku();
+            if ($sku !== '') {
+                $skus[] = $sku;
             }
         }
         if (!$lines) {
