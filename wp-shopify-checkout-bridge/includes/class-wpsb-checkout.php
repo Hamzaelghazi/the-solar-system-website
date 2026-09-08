@@ -185,39 +185,27 @@ class WPSB_Checkout {
             return $gate;
         }
 
-        $api      = WPSB_Shopify_API::instance();
-        $lines    = [];
-        $snapshot = [];
-        $skus     = [];
+        $api       = WPSB_Shopify_API::instance();
+        $lines     = [];
+        $snapshot  = [];
+        $skus      = [];
+        $line_meta = []; // parallel to $lines: [ ['pid'=>, 'sku'=>, 'qty'=>], ... ]
         foreach ($order->get_items() as $item) {
             $product = $item->get_product();
             if (!$product) {
                 continue;
             }
-            $pid        = $product->get_id();
-            $parent_id  = $product->get_parent_id();
-            $sku        = trim((string) $product->get_sku());
+            $pid       = $product->get_id();
+            $parent_id = $product->get_parent_id();
+            $sku       = trim((string) $product->get_sku());
 
-            // Resolve the SKU to its CURRENT Shopify variant at checkout time,
-            // so a stored id that went stale (e.g. Shopify recreated the variant
-            // on a re-import) can never break checkout. Refresh the stored meta
-            // when it drifts. Fall back to the stored id only if the live lookup
-            // is unavailable.
-            $variant_id = '';
-            if ($sku !== '' && $api->has_admin()) {
-                $live = $api->admin_variant_by_sku($sku);
-                if (!is_wp_error($live) && $live && !empty($live['matched_variant'])) {
-                    $variant_id = $live['matched_variant']['id'];
-                    if ($variant_id && get_post_meta($pid, '_wpsb_variant_id', true) !== $variant_id) {
-                        update_post_meta($pid, '_wpsb_variant_id', $variant_id);
-                    }
-                }
-            }
-            if (!$variant_id) {
-                $variant_id = get_post_meta($pid, '_wpsb_variant_id', true);
-                if (!$variant_id && $parent_id) {
-                    $variant_id = get_post_meta($parent_id, '_wpsb_variant_id', true);
-                }
+            // FAST path: use the stored Shopify variant id — no API call. If it
+            // has gone stale (Shopify recreated the variant), Shopify rejects it
+            // and we re-resolve by SKU once, below, then retry. This keeps the
+            // normal checkout to a single API round-trip.
+            $variant_id = get_post_meta($pid, '_wpsb_variant_id', true);
+            if (!$variant_id && $parent_id) {
+                $variant_id = get_post_meta($parent_id, '_wpsb_variant_id', true);
             }
             if (!$variant_id) {
                 return new WP_Error(
@@ -226,8 +214,9 @@ class WPSB_Checkout {
                 );
             }
             $qty = max(1, (int) $item->get_quantity());
-            $lines[] = ['variantId' => $variant_id, 'quantity' => $qty];
-            $snapshot[] = ['variant' => $variant_id, 'qty' => $qty, 'title' => $item->get_name()];
+            $lines[]     = ['variantId' => $variant_id, 'quantity' => $qty];
+            $snapshot[]  = ['variant' => $variant_id, 'qty' => $qty, 'title' => $item->get_name()];
+            $line_meta[] = ['pid' => $pid, 'sku' => $sku, 'qty' => $qty];
             if ($sku !== '') {
                 $skus[] = $sku;
             }
@@ -262,11 +251,36 @@ class WPSB_Checkout {
             $note = sprintf(__('WooCommerce order #%s (Online Store)', 'wpsb'), $order->get_order_number());
         }
 
-        $url = WPSB_Shopify_API::instance()->create_checkout($lines, [
+        $args = [
             'email'      => $order->get_billing_email(),
             'attributes' => $attributes,
             'note'       => $note,
-        ]);
+        ];
+        $url = $api->create_checkout($lines, $args);
+
+        // Self-heal stale variant ids only if the fast path failed: re-resolve
+        // every line's SKU against the current catalogue in ONE call, refresh
+        // the stored ids, and retry once. Normal checkouts never reach this.
+        if (is_wp_error($url) && $api->has_admin()) {
+            $map = $api->all_variant_skus();
+            if (!is_wp_error($map)) {
+                $changed = false;
+                foreach ($line_meta as $i => $m) {
+                    if ($m['sku'] !== '' && isset($map[$m['sku']]['matched_variant']['id'])) {
+                        $fresh = $map[$m['sku']]['matched_variant']['id'];
+                        if ($fresh !== $lines[$i]['variantId']) {
+                            $lines[$i]['variantId']    = $fresh;
+                            $snapshot[$i]['variant']   = $fresh;
+                            update_post_meta($m['pid'], '_wpsb_variant_id', $fresh);
+                            $changed = true;
+                        }
+                    }
+                }
+                if ($changed) {
+                    $url = $api->create_checkout($lines, $args);
+                }
+            }
+        }
         if (is_wp_error($url)) {
             return $url;
         }

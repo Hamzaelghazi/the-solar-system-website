@@ -3,7 +3,7 @@
  * Plugin Name: WP Shopify Checkout Bridge
  * Plugin URI:  https://example.com/
  * Description: Routes WordPress traffic to Shopify checkout with full roaming — cart, customer, UTMs and pixel attribution preserved end-to-end. Built on the Shopify Cart API.
- * Version:     1.13.1
+ * Version:     1.13.2
  * Author:      MowerPro
  * License:     GPL-2.0+
  * Text Domain: wpsb
@@ -11,7 +11,7 @@
 
 if (!defined('ABSPATH')) { exit; }
 
-define('WPSB_VERSION', '1.13.1');
+define('WPSB_VERSION', '1.13.2');
 define('WPSB_PATH', plugin_dir_path(__FILE__));
 define('WPSB_URL',  plugin_dir_url(__FILE__));
 

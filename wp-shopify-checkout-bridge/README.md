@@ -1,5 +1,14 @@
 Routes WordPress traffic to Shopify checkout with full session roaming.
 
+## What changed in v1.13.2
+
+- **Faster checkout redirect.** v1.12.4 re-resolved every line item's SKU
+  against the Shopify Admin API on each Place Order (one API call per item),
+  which made the hand-off slow for multi-item carts. Checkout now uses the
+  stored variant ids directly — a single Cart API call — and only falls back to
+  re-resolving SKUs (in one batched call) if Shopify actually rejects a stale
+  id, then retries once. Normal checkouts are now one round-trip.
+
 ## What changed in v1.13.1
 
 - **Checkout now registers as Direct traffic, not a self-referral.** Previously
