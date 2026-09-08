@@ -49,21 +49,6 @@
 .wpsb-trust { margin-top: 12px; font-size: .8rem; color: var(--wpsb-muted); }
 .wpsb-notice { padding: 12px 14px; border: 1px dashed var(--wpsb-line); border-radius: 8px; color: var(--wpsb-muted); }
 
-/* ---- Native "Buy Now" button (single product page) ---- */
-.wpsb-buy-now {
-    display: inline-block;
-    width: 100%;
-    text-align: center;
-    background: var(--wpsb-accent);
-    color: var(--wpsb-accent-ink);
-    border: 0;
-    border-radius: 10px;
-    padding: 12px 22px;
-    font-weight: 600;
-    cursor: pointer;
-}
-.wpsb-buy-now:hover { filter: brightness(1.05); }
-
 /* ---- Spinner overlay ---- */
 .wpsb-spinner {
     position: fixed;

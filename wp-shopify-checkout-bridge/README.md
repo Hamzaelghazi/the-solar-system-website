@@ -1,5 +1,12 @@
 Routes WordPress traffic to Shopify checkout with full session roaming.
 
+## What changed in v1.13.3
+
+- **Removed the plugin's extra "Buy Now" button.** Themes that already provide a
+  working Add to Cart / Buy Now are used as-is; the plugin no longer injects its
+  own button. Checkout still hands off to Shopify via the "Pay via Shopify"
+  gateway at Place Order.
+
 ## What changed in v1.13.2
 
 - **Faster checkout redirect.** v1.12.4 re-resolved every line item's SKU
