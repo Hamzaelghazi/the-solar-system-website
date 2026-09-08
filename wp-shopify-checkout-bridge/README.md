@@ -1,5 +1,17 @@
 Routes WordPress traffic to Shopify checkout with full session roaming.
 
+## What changed in v1.13.1
+
+- **Checkout now registers as Direct traffic, not a self-referral.** Previously
+  Shopify logged your WordPress domain as the referrer for every sale. Because
+  WordPress is your own first-party front-end, the plugin now sends
+  `Referrer-Policy: no-referrer` (plus a no-referrer meta tag) on the cart and
+  checkout pages, so the hop to Shopify carries no referrer and Shopify records
+  **Direct** instead of your domain — the same idea as an analytics
+  "referral exclusion". Genuine ad UTMs live in the URL, so paid-traffic
+  attribution is unaffected. Toggle via *Settings → "Report checkout as Direct
+  traffic"* (on by default).
+
 ## What changed in v1.13.0
 
 - **Shopify orders now look like organic Online Store sales.** By default the

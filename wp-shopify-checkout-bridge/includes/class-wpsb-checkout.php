@@ -39,6 +39,41 @@ class WPSB_Checkout {
         // Direct "buy this variant now" path (shortcode buy button).
         add_action('wp_ajax_wpsb_buy_now', [$this, 'ajax_buy_now']);
         add_action('wp_ajax_nopriv_wpsb_buy_now', [$this, 'ajax_buy_now']);
+
+        // Treat the WordPress → Shopify hop as first-party (self-referral):
+        // suppress the referrer on the cart/checkout pages so Shopify records
+        // the visit as Direct instead of logging the WordPress domain. Real ad
+        // UTMs live in the URL, so they still attribute correctly.
+        add_action('template_redirect', [$this, 'maybe_suppress_referrer']);
+        add_action('wp_head', [$this, 'referrer_meta'], 1);
+    }
+
+    /** Whether to report the WordPress → Shopify hop as Direct (default on). */
+    private function direct_traffic_enabled() {
+        return get_option('wpsb_direct_traffic', '1') === '1';
+    }
+
+    /** On cart/checkout, send Referrer-Policy: no-referrer so Shopify sees Direct. */
+    public function maybe_suppress_referrer() {
+        if (!$this->direct_traffic_enabled() || headers_sent()) {
+            return;
+        }
+        if (!function_exists('is_checkout')) {
+            return;
+        }
+        if (is_checkout() || is_cart()) {
+            header('Referrer-Policy: no-referrer');
+        }
+    }
+
+    /** Belt-and-braces: a no-referrer meta on the cart/checkout page head. */
+    public function referrer_meta() {
+        if (!$this->direct_traffic_enabled() || !function_exists('is_checkout')) {
+            return;
+        }
+        if (is_checkout() || is_cart()) {
+            echo '<meta name="referrer" content="no-referrer">' . "\n";
+        }
     }
 
     /* ------------------------------------------------------------------ */

@@ -44,6 +44,7 @@ class WPSB_Settings {
             'wpsb_free_ship_threshold'    => 'wpsb_sanitize_float',
             'wpsb_wc_redirect'            => 'esc_url_raw',
             'wpsb_order_metadata'         => 'wpsb_sanitize_bool',
+            'wpsb_direct_traffic'         => 'wpsb_sanitize_bool',
             'wpsb_recovery_enabled'       => 'wpsb_sanitize_bool',
             'wpsb_recovery_ai_enabled'    => 'wpsb_sanitize_bool',
             'wpsb_recovery_sequence'      => 'sanitize_text_field',
@@ -119,10 +120,14 @@ class WPSB_Settings {
                     $this->text_row('wpsb_free_ship_threshold', __('Free shipping threshold', 'wpsb'), '0');
                     $this->text_row('wpsb_wc_redirect', __('WooCommerce → Shopify redirect URL', 'wpsb'), '', __('Where an empty-eligible WooCommerce cart is sent (usually your Shopify /cart or a collection).', 'wpsb'));
                     $this->checkbox_row('wpsb_order_metadata', __('Attach reconciliation data to Shopify orders', 'wpsb'));
+                    $this->checkbox_row('wpsb_direct_traffic', __('Report checkout as Direct traffic (recommended)', 'wpsb'));
                     ?>
                 </table>
                 <p class="description">
-                    <?php esc_html_e('Leave unchecked (recommended) so Shopify orders look like normal Online Store sales — no note and no "Additional details" attributes. The WooCommerce order is still marked paid, matched by customer email + total. Check it only if you need the exact WooCommerce order id / UTMs stored on the Shopify order.', 'wpsb'); ?>
+                    <?php esc_html_e('Reconciliation data: leave unchecked (recommended) so Shopify orders look like normal Online Store sales — no note and no "Additional details" attributes. The WooCommerce order is still marked paid, matched by customer email + total. Check it only if you need the exact WooCommerce order id / UTMs stored on the Shopify order.', 'wpsb'); ?>
+                </p>
+                <p class="description">
+                    <?php esc_html_e('Direct traffic: suppresses the WordPress referrer on the checkout hop so Shopify records these as Direct rather than logging your own domain as the referrer (standard self-referral handling). Real ad UTMs still attribute correctly.', 'wpsb'); ?>
                 </p>
 
                 <h2><?php esc_html_e('Pixels', 'wpsb'); ?></h2>
