@@ -33,6 +33,27 @@ class WPSB_Shopify_API {
         return $this->domain() && get_option('wpsb_admin_token', '');
     }
 
+    /**
+     * The connected store's display name via the Storefront token, cached
+     * briefly. Lets the admin confirm at a glance WHICH store the current
+     * domain + token resolve to (so a wrong domain after a store switch is
+     * obvious). Returns '' when not configured or the token/domain don't match.
+     */
+    public function shop_name() {
+        if (!$this->is_configured()) {
+            return '';
+        }
+        $key    = 'wpsb_shopname_' . md5($this->domain());
+        $cached = get_transient($key);
+        if ($cached !== false) {
+            return $cached;
+        }
+        $data = $this->graphql('{ shop { name } }');
+        $name = (!is_wp_error($data) && !empty($data['shop']['name'])) ? $data['shop']['name'] : '';
+        set_transient($key, $name, 5 * MINUTE_IN_SECONDS);
+        return $name;
+    }
+
     /* ------------------------------------------------------------------ */
     /* Storefront GraphQL                                                  */
     /* ------------------------------------------------------------------ */

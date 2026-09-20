@@ -135,6 +135,25 @@ class WPSB_Products {
                 </p></div>
             <?php endif; ?>
 
+            <?php
+            $shop_name = $api->is_configured() ? $api->shop_name() : '';
+            $domain    = get_option('wpsb_shop_domain', '');
+            if ($api->is_configured()):
+            ?>
+                <div class="notice <?php echo $shop_name ? 'notice-info' : 'notice-error'; ?>" style="border-left-width:4px">
+                    <p style="font-size:14px">
+                        <?php if ($shop_name): ?>
+                            <strong><?php esc_html_e('Connected to:', 'wpsb'); ?></strong>
+                            <?php echo esc_html($shop_name); ?> — <code><?php echo esc_html($domain); ?></code>
+                            <br><span class="description"><?php esc_html_e('If this is not the store you meant to use, change the Shop domain (and its Storefront token) on the Settings page.', 'wpsb'); ?></span>
+                        <?php else: ?>
+                            <strong><?php esc_html_e('Not connected.', 'wpsb'); ?></strong>
+                            <?php printf(esc_html__('The domain %s and the Storefront token do not resolve to a store. They must both belong to the SAME store — fix them on the Settings page.', 'wpsb'), '<code>' . esc_html($domain) . '</code>'); ?>
+                        <?php endif; ?>
+                    </p>
+                </div>
+            <?php endif; ?>
+
             <div class="wpsb-status-card <?php echo $all_ok ? 'is-ok' : ''; ?>">
                 <h2><?php esc_html_e('Shopify connection status', 'wpsb'); ?>
                     <?php if ($all_ok): ?><span class="wpsb-badge">✓ <?php esc_html_e('All products connected', 'wpsb'); ?></span><?php endif; ?>

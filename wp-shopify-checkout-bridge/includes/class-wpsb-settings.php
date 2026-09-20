@@ -53,7 +53,9 @@ class WPSB_Settings {
         $wpdb->query(
             "DELETE FROM {$wpdb->options}
               WHERE option_name LIKE '\_transient\_wpsb_ph\_%'
-                 OR option_name LIKE '\_transient\_timeout\_wpsb_ph\_%'"
+                 OR option_name LIKE '\_transient\_timeout\_wpsb_ph\_%'
+                 OR option_name LIKE '\_transient\_wpsb_shopname\_%'
+                 OR option_name LIKE '\_transient\_timeout\_wpsb_shopname\_%'"
         );
 
         // Per-product links belong to the OLD store — clear them all.

@@ -1,5 +1,14 @@
 Routes WordPress traffic to Shopify checkout with full session roaming.
 
+## What changed in v1.14.3
+
+- **"Connected to: <store name>" banner** on Settings → Shopify Products, so you
+  can confirm at a glance WHICH Shopify store the current domain + Storefront
+  token actually resolve to. After switching stores this makes a wrong shop
+  domain obvious immediately (it names the real store, or warns that the domain
+  and token don't resolve to a store) — instead of only finding out after a
+  failed link.
+
 ## What changed in v1.14.2
 
 - **Reliable SKU linking on Headless / no-Admin stores.** The Storefront `sku:`
