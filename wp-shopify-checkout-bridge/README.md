@@ -1,5 +1,17 @@
 Routes WordPress traffic to Shopify checkout with full session roaming.
 
+## What changed in v1.14.1
+
+- **Linking never fails just because the Admin field has the wrong token.**
+  On Headless stores there is no Admin API token (only Storefront Public /
+  Private). If the Admin field is empty — or holds a Storefront token, or one
+  without `read_products` — "Link to Shopify by SKU" now **falls back to the
+  Storefront SKU search** instead of erroring with "Access denied for
+  productVariants field". Checkout's stale-id self-heal falls back the same way.
+  The Admin token stays fully optional (only needed for order-paid reconciliation
+  and WordPress → Shopify push). Tip: on a Headless-only store, leave the Admin
+  API token field blank.
+
 ## What changed in v1.14.0
 
 - **No more old-store data stuck when switching stores.** Changing the shop

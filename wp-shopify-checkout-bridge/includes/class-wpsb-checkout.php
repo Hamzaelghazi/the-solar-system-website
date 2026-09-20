@@ -261,24 +261,38 @@ class WPSB_Checkout {
         // Self-heal stale variant ids only if the fast path failed: re-resolve
         // every line's SKU against the current catalogue in ONE call, refresh
         // the stored ids, and retry once. Normal checkouts never reach this.
-        if (is_wp_error($url) && $api->has_admin()) {
-            $map = $api->all_variant_skus();
-            if (!is_wp_error($map)) {
-                $changed = false;
-                foreach ($line_meta as $i => $m) {
-                    if ($m['sku'] !== '' && isset($map[$m['sku']]['matched_variant']['id'])) {
-                        $fresh = $map[$m['sku']]['matched_variant']['id'];
-                        if ($fresh !== $lines[$i]['variantId']) {
-                            $lines[$i]['variantId']    = $fresh;
-                            $snapshot[$i]['variant']   = $fresh;
-                            update_post_meta($m['pid'], '_wpsb_variant_id', $fresh);
-                            $changed = true;
-                        }
+        if (is_wp_error($url)) {
+            // Re-resolve each SKU to its current variant. Prefer the Admin map
+            // (one call) when available; otherwise use the Storefront SKU search
+            // per line, so this self-heal works on Headless stores with no Admin
+            // token too.
+            $map = $api->has_admin() ? $api->all_variant_skus() : null;
+            if (is_wp_error($map)) {
+                $map = null;
+            }
+            $changed = false;
+            foreach ($line_meta as $i => $m) {
+                if ($m['sku'] === '') {
+                    continue;
+                }
+                $fresh = '';
+                if ($map !== null) {
+                    $fresh = $map[$m['sku']]['matched_variant']['id'] ?? '';
+                } else {
+                    $sf = $api->get_variant_by_sku($m['sku']);
+                    if ($sf && !empty($sf['matched_variant'])) {
+                        $fresh = $sf['matched_variant']['id'];
                     }
                 }
-                if ($changed) {
-                    $url = $api->create_checkout($lines, $args);
+                if ($fresh && $fresh !== $lines[$i]['variantId']) {
+                    $lines[$i]['variantId']  = $fresh;
+                    $snapshot[$i]['variant'] = $fresh;
+                    update_post_meta($m['pid'], '_wpsb_variant_id', $fresh);
+                    $changed = true;
                 }
+            }
+            if ($changed) {
+                $url = $api->create_checkout($lines, $args);
             }
         }
         if (is_wp_error($url)) {

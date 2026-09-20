@@ -233,19 +233,22 @@ class WPSB_Products {
         $no_match = [];   // SKU set, but no Shopify variant carries it
         $errors   = [];   // Shopify API errors (bad token, scope, etc.), de-duped
 
-        // Preferred path: one catalogue fetch, then match every product locally.
+        // Preferred path (Admin token present): one catalogue fetch, then match
+        // every product locally. If the Admin call is denied — e.g. a Headless
+        // store where the "Admin" field actually holds a Storefront token, or no
+        // Admin scope — DON'T fail: fall back to the Storefront SKU search, which
+        // works with just the Storefront token. Linking never depends on Admin.
         $map = null;
         if ($api->has_admin()) {
-            $map = $api->all_variant_skus();
-            if (is_wp_error($map)) {
-                $this->redirect_with(sprintf(
-                    __('Shopify API error (fix this first): %s', 'wpsb'),
-                    esc_html($map->get_error_message())
-                ), 'error');
+            $result = $api->all_variant_skus();
+            if (is_wp_error($result)) {
+                $map = null; // fall back to the Storefront per-product search
+            } else {
+                $map = $result;
             }
         }
 
-        $sf_lookups = 0; // bound the no-Admin Storefront fallback
+        $sf_lookups = 0; // bound the no-map Storefront fallback
 
         foreach ($ids as $pid) {
             $wc = wc_get_product($pid);
