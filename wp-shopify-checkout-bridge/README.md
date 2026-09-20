@@ -1,5 +1,20 @@
 Routes WordPress traffic to Shopify checkout with full session roaming.
 
+## What changed in v1.14.0
+
+- **No more old-store data stuck when switching stores.** Changing the shop
+  domain now automatically clears everything tied to the previous store: the
+  cached product lookups, every per-product link (variant id / handle / product
+  id / sku / snapshot), and the sync + order-poll cursors. So a store switch
+  starts clean — just re-run "Link to Shopify by SKU" for the new store. A
+  **"Reset store connection"** button on Settings → Shopify Products does the
+  same on demand.
+
+  Note: this clears stale *data*; you still must enter credentials that all
+  belong to the same store — its domain, its Storefront (Headless) token, and a
+  Custom App Admin token with `read_products`. A token from a different store, or
+  a Storefront token in the Admin field, still returns 401 / access denied.
+
 ## What changed in v1.13.3
 
 - **Removed the plugin's extra "Buy Now" button.** Themes that already provide a

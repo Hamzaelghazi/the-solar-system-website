@@ -24,6 +24,46 @@ class WPSB_Settings {
     private function __construct() {
         add_action('admin_menu', [$this, 'menu']);
         add_action('admin_init', [$this, 'register']);
+
+        // When the shop domain changes (switching Shopify stores), wipe the old
+        // store's cached lookups and per-product links so nothing carries over.
+        add_action('update_option_wpsb_shop_domain', [$this, 'on_domain_change'], 10, 2);
+        add_action('add_option_wpsb_shop_domain', function ($name, $value) {
+            self::reset_store_state();
+        }, 10, 2);
+    }
+
+    /** Fired when the shop domain option is updated; resets on an actual change. */
+    public function on_domain_change($old, $new) {
+        if ((string) $old !== (string) $new) {
+            self::reset_store_state();
+        }
+    }
+
+    /**
+     * Clear everything that is tied to a specific Shopify store: the cached
+     * product-handle lookups, the per-product Shopify links (variant id / handle
+     * / product id / sku), and the store-specific sync + order-poll cursors.
+     * Safe to run anytime; after it you simply re-link against the new store.
+     */
+    public static function reset_store_state() {
+        global $wpdb;
+
+        // Cached product lookups (transients keyed by shop domain).
+        $wpdb->query(
+            "DELETE FROM {$wpdb->options}
+              WHERE option_name LIKE '\_transient\_wpsb_ph\_%'
+                 OR option_name LIKE '\_transient\_timeout\_wpsb_ph\_%'"
+        );
+
+        // Per-product links belong to the OLD store — clear them all.
+        foreach (['_wpsb_variant_id', '_wpsb_handle', '_wpsb_shopify_id', '_wpsb_sku', '_wpsb_snapshot'] as $key) {
+            delete_post_meta_by_key($key);
+        }
+
+        // Store-specific cursors.
+        delete_option('wpsb_sync_offset');
+        delete_option('wpsb_orders_since');
     }
 
     /**

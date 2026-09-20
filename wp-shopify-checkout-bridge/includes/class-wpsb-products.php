@@ -26,6 +26,7 @@ class WPSB_Products {
         add_action('admin_post_wpsb_sync_now', [$this, 'handle_sync_now']);
         add_action('admin_post_wpsb_import_all', [$this, 'handle_import_all']);
         add_action('admin_post_wpsb_push_one', [$this, 'handle_push_one']);
+        add_action('admin_post_wpsb_reset_store', [$this, 'handle_reset_store']);
     }
 
     public function menu() {
@@ -149,6 +150,7 @@ class WPSB_Products {
                 <?php $this->action_form('wpsb_link_now', __('Link to Shopify by SKU', 'wpsb'), __('Matches each unlinked WooCommerce product to the Shopify variant with the same SKU. The SKU is the only match key — set the WooCommerce SKU to equal the Shopify variant SKU.', 'wpsb')); ?>
                 <?php $this->action_form('wpsb_sync_now', __('Sync prices now', 'wpsb'), __('Refresh price, sale price and stock for every linked product from live Shopify data.', 'wpsb')); ?>
                 <?php $this->action_form('wpsb_import_all', __('Import Shopify → WooCommerce', 'wpsb'), __('Create WooCommerce products from your Shopify catalogue so your theme renders them natively.', 'wpsb')); ?>
+                <?php $this->action_form('wpsb_reset_store', __('Reset store connection', 'wpsb'), __('Switched Shopify stores? This clears cached lookups and every product link from the old store so nothing is stuck. Then re-link by SKU. (Also runs automatically when you change the shop domain.)', 'wpsb')); ?>
             </div>
 
             <?php $this->render_push_panel(); ?>
@@ -321,6 +323,12 @@ class WPSB_Products {
             );
         }
         $this->redirect_with($msg);
+    }
+
+    public function handle_reset_store() {
+        $this->guard('wpsb_reset_store');
+        WPSB_Settings::reset_store_state();
+        $this->redirect_with(__('Store connection reset: cleared cached lookups and all old product links. Now click "Link to Shopify by SKU" for the current store.', 'wpsb'));
     }
 
     public function handle_sync_now() {
