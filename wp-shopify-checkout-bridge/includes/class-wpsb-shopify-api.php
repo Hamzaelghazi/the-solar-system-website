@@ -305,6 +305,77 @@ class WPSB_Shopify_API {
     }
 
     /**
+     * Build the same SKU → variant map using ONLY the Storefront API, by listing
+     * the store's products (published to the token's channel) and reading each
+     * variant's SKU. This is the reliable linker path for Headless / no-Admin
+     * stores: it does not depend on the Storefront `sku:` search (which is
+     * unreliable), just on plain product listing. Keyed by trimmed SKU.
+     *
+     * @return array<string,array>|WP_Error
+     */
+    public function all_variant_skus_via_storefront($max_pages = 40) {
+        if (!$this->is_configured()) {
+            return new WP_Error('wpsb_not_configured', __('Shopify Storefront token not configured.', 'wpsb'));
+        }
+        $query = 'query($after: String) {
+            products(first: 100, after: $after) {
+                pageInfo { hasNextPage endCursor }
+                edges { node {
+                    id title handle
+                    featuredImage { url altText }
+                    variants(first: 100) {
+                        edges { node { id sku availableForSale price { amount currencyCode } } }
+                    }
+                } }
+            }
+        }';
+
+        $map   = [];
+        $after = null;
+        $pages = 0;
+        do {
+            $data = $this->graphql($query, ['after' => $after]);
+            if (is_wp_error($data)) {
+                return $data;
+            }
+            $conn = $data['products'] ?? [];
+            foreach (($conn['edges'] ?? []) as $edge) {
+                $node = $edge['node'];
+                foreach (($node['variants']['edges'] ?? []) as $ve) {
+                    $vn  = $ve['node'];
+                    $sku = isset($vn['sku']) ? trim((string) $vn['sku']) : '';
+                    if ($sku === '' || isset($map[$sku])) {
+                        continue;
+                    }
+                    $variant = [
+                        'id'        => $vn['id'] ?? '',
+                        'title'     => $vn['title'] ?? '',
+                        'sku'       => $sku,
+                        'available' => !empty($vn['availableForSale']),
+                        'price'     => isset($vn['price']['amount']) ? (float) $vn['price']['amount'] : null,
+                        'currency'  => $vn['price']['currencyCode'] ?? get_option('wpsb_currency', 'USD'),
+                        'compare_at'=> null,
+                    ];
+                    $map[$sku] = [
+                        'id'              => $node['id'] ?? '',
+                        'title'           => $node['title'] ?? '',
+                        'handle'          => $node['handle'] ?? '',
+                        'image'           => $node['featuredImage']['url'] ?? '',
+                        'image_alt'       => $node['featuredImage']['altText'] ?? '',
+                        'variants'        => [$variant],
+                        'default_variant' => $variant['id'],
+                        'matched_variant' => $variant,
+                    ];
+                }
+            }
+            $after = !empty($conn['pageInfo']['hasNextPage']) ? ($conn['pageInfo']['endCursor'] ?? null) : null;
+            $pages++;
+        } while ($after && $pages < $max_pages);
+
+        return $map;
+    }
+
+    /**
      * Execute an Admin GraphQL query with the Admin token.
      *
      * @return array|WP_Error decoded `data`.

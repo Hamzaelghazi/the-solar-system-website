@@ -241,14 +241,20 @@ class WPSB_Products {
         $map = null;
         if ($api->has_admin()) {
             $result = $api->all_variant_skus();
-            if (is_wp_error($result)) {
-                $map = null; // fall back to the Storefront per-product search
-            } else {
+            if (!is_wp_error($result)) {
+                $map = $result;
+            }
+        }
+        // Headless / no-Admin store: build the SKU map from the Storefront
+        // catalogue (reliable), instead of the flaky Storefront sku: search.
+        if ($map === null && $api->is_configured()) {
+            $result = $api->all_variant_skus_via_storefront();
+            if (!is_wp_error($result)) {
                 $map = $result;
             }
         }
 
-        $sf_lookups = 0; // bound the no-map Storefront fallback
+        $sf_lookups = 0; // bound the last-resort per-product Storefront search
 
         foreach ($ids as $pid) {
             $wc = wc_get_product($pid);

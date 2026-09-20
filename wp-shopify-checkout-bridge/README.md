@@ -1,5 +1,15 @@
 Routes WordPress traffic to Shopify checkout with full session roaming.
 
+## What changed in v1.14.2
+
+- **Reliable SKU linking on Headless / no-Admin stores.** The Storefront `sku:`
+  search is unreliable and was reporting "no matching Shopify SKU" for products
+  that actually exist. The linker now builds the SKU→variant map by **listing
+  the store's Storefront catalogue and reading each variant's SKU** (a reliable
+  call), then matching locally — same approach the Admin path uses, but with just
+  the Storefront token. Matching is still exact/trimmed, so the SKUs must be
+  identical on both sides (a WooCommerce `…​.0` must equal the Shopify SKU).
+
 ## What changed in v1.14.1
 
 - **Linking never fails just because the Admin field has the wrong token.**
